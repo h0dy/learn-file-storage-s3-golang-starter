@@ -19,8 +19,10 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		Token        string `json:"token"`
 		RefreshToken string `json:"refresh_token"`
 	}
-
+	w.Header().Set("Content-Type", "application/json")
+	
 	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
 	params := parameters{}
 	err := decoder.Decode(&params)
 	if err != nil {

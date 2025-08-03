@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 	"github.com/google/uuid"
 )
 
@@ -31,7 +33,58 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
-	// TODO: implement the upload here
+	const maxMemory = 10 << 20 // 10 MB
 
-	respondWithJSON(w, http.StatusOK, struct{}{})
+	r.ParseMultipartForm(maxMemory)
+	
+	file, header, err := r.FormFile("thumbnail")
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't parse form file", err)
+		return
+	}
+	defer file.Close()
+
+	thumbnailType := header.Header.Get("Content-Type")
+	if thumbnailType == "" {
+		respondWithError(w, http.StatusBadRequest, "Missing Content-Type for thumbnail", nil)
+		return
+	}
+
+	fileData, err := io.ReadAll(file)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't parse form file", err)
+		return
+	}
+	video, err := cfg.db.GetVideo(videoID)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized", err)
+		return
+	}
+	if video.UserID != userID {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized", err)
+		return
+	}
+
+	vidThumbnail := thumbnail{
+		data:fileData,
+		mediaType: thumbnailType,
+	}
+	
+	videoThumbnails[videoID] = vidThumbnail
+	thumbURL := fmt.Sprintf("http://localhost:%v/api/thumbnails/%v", cfg.port, videoID.String())
+	video.ThumbnailURL = &thumbURL
+	
+	if err := cfg.db.UpdateVideo(video); err != nil {
+		delete(videoThumbnails, videoID)
+		respondWithError(w, http.StatusInternalServerError, err.Error(), err)
+		return
+	}
+	respondWithJSON(w, http.StatusOK, database.Video{
+		ID: videoID,
+		CreatedAt: video.CreatedAt,
+		UpdatedAt: video.UpdatedAt,
+		ThumbnailURL: video.ThumbnailURL,
+		VideoURL: video.VideoURL,
+		CreateVideoParams: video.CreateVideoParams,
+	})
 }
