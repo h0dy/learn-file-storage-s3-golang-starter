@@ -95,18 +95,35 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	tempFile.Seek(0, io.SeekStart)
 
 	fileBaseUrl := getAssetPath(mediaType)
+
+	// get the vid's ratio aspect for naming convention
 	vidRatio, err := getVideoAspectRatio(tempFile.Name())
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 	fileKey := filepath.Join(vidRatio, fileBaseUrl)
-	
+
+	// get processed version of the video
+	processedVidPath, err := processVideoForFastStart(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "something went wrong", err)
+		return
+	}
+	defer os.Remove(processedVidPath)
+
+	processedVid, err := os.Open(processedVidPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "something went wrong", err)
+		return
+	}
+	defer processedVid.Close()
+
 	// upload the object (file) to s3 bucket
 	if _, err = cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket: &cfg.s3Bucket,
 		Key: &fileKey,
-		Body: tempFile,
+		Body: processedVid,
 		ContentType: &mediaType,
 	}); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "something went wrong", err)
@@ -174,4 +191,30 @@ func aspectRatio(width, height int) string {
     	return "portrait"
     }
 	return "other"
+}
+
+// processVideoForFastStart func moves the "The moov Atom" to the start of the file
+// making it easier for the browser to stream the vid by getting the metadata faster
+func processVideoForFastStart(filepath string) (string, error) {
+	outputFile := filepath + ".processing"
+	cmd := exec.Command("ffmpeg",
+		"-i",
+		filepath,
+		"-c",
+		"copy", "-movflags",
+		"faststart", "-f", "mp4",
+		outputFile,
+	)
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	
+	fileInfo, err := os.Stat(outputFile)
+	if err != nil {
+		return "", fmt.Errorf("could not stat processed file: %v", err)
+	}
+	if fileInfo.Size() == 0 {
+		return "", fmt.Errorf("processed file is empty")
+	}
+	return outputFile, nil
 }
