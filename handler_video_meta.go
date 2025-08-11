@@ -95,6 +95,13 @@ func (cfg *apiConfig) handlerVideoGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// gets the video struct with the videoURL filed sets to the actual video 
+	video, err = cfg.dbVideoToSignedVideo(video)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "something went wrong", err)
+		return
+	}
+	
 	respondWithJSON(w, http.StatusOK, video)
 }
 
@@ -116,5 +123,13 @@ func (cfg *apiConfig) handlerVideosRetrieve(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	for idx, vid := range videos {
+		signedVid, err := cfg.dbVideoToSignedVideo(vid)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "something went wrong", err)
+			return
+		}
+		videos[idx] = signedVid
+	}
 	respondWithJSON(w, http.StatusOK, videos)
 }
