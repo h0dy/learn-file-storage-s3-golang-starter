@@ -129,19 +129,19 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	// set/update the video url. 
 	// URL structure: "<bucket-name>,<key>"
-	vidUrl := fmt.Sprintf("%v,%v", cfg.s3Bucket, fileKey)
+	vidUrl := fmt.Sprintf("https://%v/%v", cfg.s3CfDistribution, fileKey)
 	video.VideoURL =  &vidUrl
 	if err := cfg.db.UpdateVideo(video); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "something went wrong", err)
 		return
 	}
-
+	// with presigned url 
 	// gets the video struct with the videoURL filed sets to the actual video 
-	video, err = cfg.dbVideoToSignedVideo(video)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "something went wrong", err)
-		return
-	}
+	// video, err = cfg.dbVideoToSignedVideo(video)
+	// if err != nil {
+	// 	respondWithError(w, http.StatusInternalServerError, "something went wrong", err)
+	// 	return
+	// }
 
 	respondWithJSON(w, http.StatusCreated, database.Video{
 		ID: videoID,
